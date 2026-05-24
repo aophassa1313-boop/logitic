@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logistics Management System</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Chart.js และ DataLabels Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <!-- Google Fonts: Sarabun -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #f3f4f6; font-size: 16px; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .loader { border-top-color: #3b82f6; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* สไตล์ตารางโหมดแก้ไข */
+        .editable-row td:not(.action-cell) {
+            background-color: #f0f9ff;
+            border: 2px solid #bae6fd !important;
+            cursor: text;
+        }
+        
+        .table-container { max-height: calc(100vh - 250px); overflow-y: auto; overflow-x: auto; }
+        thead th { position: sticky; top: 0; z-index: 10; background-color: #1e3a8a; color: white; }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: rgba(156, 163, 175, 0.5); border-radius: 20px; }
+
+        /* --- PRINT / PDF STYLES --- */
+        @media print {
+            @page { size: landscape; margin: 1cm; }
+            html, body { 
+                height: auto !important; 
+                overflow: visible !important; 
+                background-color: white !important;
+                color: black !important;
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact; 
+                font-size: 9pt !important;
+                display: block !important;
+            }
+            
+            /* ซ่อนส่วนที่ไม่ต้องการใน PDF */
+            aside, header, #sidebarOverlay, .hide-on-print, .action-cell, 
+            button, input, .dashboard-filter-bar, #chartsSection, #dashboardStats, .table-filter-bar { 
+                display: none !important; 
+            }
+            
+            /* ซ่อนตารางทั้งหมดก่อน แล้วค่อยเปิดเฉพาะตัวที่ต้องการ */
+            #incomingDocSummary, #view-table {
+                display: none !important;
+            }
+            
+            /* บังคับซ่อนแถวที่ถูก Filter หรือ Search ออก */
+            tr[style*="display: none"] {
+                display: none !important;
+            }
+
+            /* แสดงเฉพาะตารางสรุปหนังสือรับ (รายวัน) เมื่อสั่งพิมพ์รายงานสรุป */
+            body.print-incoming-summary #incomingDocSummary {
+                display: block !important;
+            }
+            
+            /* แสดงเฉพาะตารางฐานข้อมูลหลัก เมื่อสั่งพิมพ์รายงานฐานข้อมูล */
+            body.print-main-table #view-table {
+                display: block !important;
+            }
+
+            #mainApp, main, #contentArea, .view-section { 
+                display: block !important; 
+                height: auto !important; 
+                overflow: visible !important; 
+                position: static !important;
+                width: 100% !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+
+            table { 
+                width: 100% !important; 
+                border-collapse: collapse !important; 
+                table-layout: auto !important;
+                margin-bottom: 20px !important;
+                border: 1px solid #000 !important;
+                display: table !important; 
+            }
+            th, td { 
+                border: 1px solid #000 !important; 
+                padding: 6px 4px !important;
+                word-wrap: break-word !important;
+                color: black !important;
+                vertical-align: middle !important;
+            }
+            thead {
+                display: table-header-group !important; 
+            }
+            thead th {
+                position: static !important; 
+                background-color: #f3f4f6 !important; 
+                color: black !important;
+                font-weight: bold !important;
+                text-align: center !important;
+                -webkit-print-color-adjust: exact;
+            }
+
+            #printTitle { 
+                display: block !important; 
+                text-align: center; 
+                font-size: 16pt !important; 
+                font-weight: bold; 
+                margin-bottom: 5px; 
+                color: black; 
+            }
+            #printDateInfo {
+                display: block !important; 
+                text-align: right;
+                font-size: 9pt !important;
+                margin-bottom: 15px;
+                color: #000;
+            }
+
+            .print-only-flex { 
+                display: flex !important; 
+                justify-content: flex-end !important;
+                margin-top: 30px !important;
+                page-break-inside: avoid !important; 
+            }
+            
+            .table-container, .summary-table-wrapper { 
+                max-height: none !important; 
+                height: auto !important;
+                overflow: visible !important; 
+                border: none !important; 
+            }
+            tr { page-break-inside: avoid !important; }
+
+            /* การพิมพ์จาก Modal */
+            body.print-modal-active #mainApp { display: none !important; }
+            body.print-modal-active #statusModal { 
+                display: block !important; 
+                position: static !important; 
+                background: white !important;
+                width: 100% !important;
+                height: auto !important;
+            }
+            body.print-modal-active #statusModal > div {
+                box-shadow: none !important;
+                border: none !important;
+                width: 100% !important;
+                height: auto !important;
+                max-width: none !important;
+            }
+            body.print-modal-active #statusModal .p-4 { padding: 0 !important; }
+        }
+
+        #printTitle, #printDateInfo { display: none; }
+    </style>
+</head>
+<body class="text-gray-800 h-screen flex overflow-hidden">
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 hidden flex-col justify-center items-center text-white">
+        <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
+        <h2 class="text-xl font-semibold" id="loadingText">กำลังประมวลผล...</h2>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="loginScreen" class="fixed inset-0 bg-slate-800 flex justify-center items-center z-40 bg-[url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80')] bg-cover bg-center px-4">
+        <div class="absolute inset-0 bg-black bg-opacity-60"></div>
+        <div class="glass p-8 md:p-10 rounded-2xl shadow-2xl w-full max-w-md relative z-10">
+            <div class="text-center mb-8">
+                <i class="fa-solid fa-boxes-packing text-5xl text-blue-600 mb-4"></i>
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Logistics System</h1>
+                <p class="text-gray-500 mt-2 text-sm">เข้าสู่ระบบเพื่อจัดการข้อมูล</p>
+            </div>
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">รหัสสมาชิก</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fa-solid fa-user text-gray-400"></i>
+                        </div>
+                        <input class="shadow appearance-none border rounded-lg w-full py-3 pl-10 pr-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500" id="memberId" type="text" placeholder="กรอกรหัสสมาชิก" required>
+                    </div>
+                </div>
+                <button class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200" type="submit">
+                    เข้าสู่ระบบ
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="mainApp" class="flex w-full h-full hidden relative">
+        <div id="sidebarOverlay" class="fixed inset-0 bg-slate-900/50 z-30 hidden md:hidden transition-opacity" onclick="toggleSidebar()"></div>
+
+        <!-- Sidebar -->
+        <aside id="sidebar" class="w-64 bg-slate-900 text-white flex flex-col fixed inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 transition-transform duration-300 ease-in-out z-40 h-full">
+            <div class="p-5 border-b border-slate-700 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-boxes-packing text-2xl text-blue-400"></i>
+                    <h2 class="text-xl font-bold">Logistics DB</h2>
+                </div>
+                <button onclick="toggleSidebar()" class="md:hidden text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            
+            <div class="p-4 border-b border-slate-700 bg-slate-800">
+                <p class="text-xs text-slate-400 mb-1">ผู้ใช้งานระบบ</p>
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center font-bold text-sm" id="userAvatar">U</div>
+                    <p class="text-sm font-semibold truncate" id="userNameDisplay">Name</p>
+                </div>
+            </div>
+
+            <nav class="flex-1 overflow-y-auto py-4 custom-scrollbar">
+                <ul class="space-y-1 px-2" id="navMenu">
+                    <li><a href="#" onclick="switchView('dashboard')" class="nav-link dashboard block py-2.5 px-4 rounded transition hover:bg-blue-600 bg-blue-600"><i class="fa-solid fa-chart-pie w-6"></i> แดชบอร์ด</a></li>
+                    <div class="px-4 py-2 mt-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">จัดการข้อมูล</div>
+                    <li><a href="#" onclick="switchView('ทะเบียนรับหนังสือ')" class="nav-link ทะเบียนรับหนังสือ block py-2 px-4 rounded transition hover:bg-slate-700"><i class="fa-solid fa-inbox w-6"></i> ทะเบียนรับหนังสือ</a></li>
+                    <li><a href="#" onclick="switchView('เสนอความต้องการ')" class="nav-link เสนอความต้องการ block py-2 px-4 rounded transition hover:bg-slate-700"><i class="fa-solid fa-file-signature w-6"></i> เสนอความต้องการ</a></li>
+                    <li><a href="#" onclick="switchView('ส่งซ่อม จำหน่าย')" class="nav-link ส่งซ่อม block py-2 px-4 rounded transition hover:bg-slate-700"><i class="fa-solid fa-screwdriver-wrench w-6"></i> ส่งซ่อม จำหน่าย</a></li>
+                    <li><a href="#" onclick="switchView('ขึ้นบัญชีคุม')" class="nav-link ขึ้นบัญชีคุม block py-2 px-4 rounded transition hover:bg-slate-700"><i class="fa-solid fa-clipboard-list w-6"></i> ขึ้นบัญชีคุม</a></li>
+                    <li><a href="#" onclick="switchView('ยานพาหนะ')" class="nav-link ยานพาหนะ block py-2 px-4 rounded transition hover:bg-slate-700"><i class="fa-solid fa-car w-6"></i> ยานพาหนะ</a></li>
+                    <li><a href="#" onclick="switchView('เบิก สป.3')" class="nav-link เบิก block py-2 px-4 rounded transition hover:bg-slate-700"><i class="fa-solid fa-truck-droplet w-6"></i> เบิก สป.3</a></li>
+                    <li><a href="#" onclick="switchView('จำหน่าย สป.3')" class="nav-link จำหน่ายสป3 block py-2 px-4 rounded transition hover:bg-slate-700"><i class="fa-solid fa-receipt w-6"></i> จำหน่าย สป.3</a></li>
+                    <li><a href="#" onclick="switchView('ทะเบียนหนังสือออก')" class="nav-link ทะเบียนหนังสือออก block py-2 px-4 rounded transition hover:bg-slate-700"><i class="fa-solid fa-paper-plane w-6"></i> ทะเบียนหนังสือออก</a></li>
+                </ul>
+            </nav>
+            <div class="p-4 border-t border-slate-700">
+                <button onclick="logout()" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded transition duration-200"><i class="fa-solid fa-right-from-bracket mr-2"></i> ออกจากระบบ</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col h-full bg-gray-50 overflow-hidden relative w-full">
+            <header class="bg-white shadow-sm h-16 flex items-center justify-between px-4 md:px-6 z-10 hide-on-print">
+                <div class="flex items-center gap-3">
+                    <button onclick="toggleSidebar()" class="md:hidden text-gray-600 p-1"><i class="fa-solid fa-bars text-2xl"></i></button>
+                    <h2 class="text-xl md:text-2xl font-semibold text-gray-800" id="pageTitle">แดชบอร์ดสรุปผล</h2>
+                </div>
+            </header>
+
+            <div class="flex-1 p-4 md:p-6 overflow-y-auto custom-scrollbar" id="contentArea">
+                
+                <h1 id="printTitle">รายงานสรุปผลการปฏิบัติงาน</h1>
+                <p id="printDateInfo">พิมพ์เมื่อ: <span id="actualPrintTime"></span></p>
+
+                <!-- VIEW: Dashboard -->
+                <div id="view-dashboard" class="view-section">
+                    <div class="dashboard-filter-bar bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 hide-on-print">
+                        <div class="flex flex-wrap items-end gap-3">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">ตั้งแต่วันที่</label>
+                                <input type="date" id="startDate" class="border rounded px-3 py-2 text-base focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">ถึงวันที่</label>
+                                <input type="date" id="endDate" class="border rounded px-3 py-2 text-base focus:ring-blue-500">
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="applyDateFilter()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">กรองข้อมูล</button>
+                                <button onclick="resetFilter()" class="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300 transition">รีเซ็ต</button>
+                            </div>
+                        </div>
+                        <button onclick="refreshDashboard()" class="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 transition shadow-sm"><i class="fa-solid fa-arrows-rotate mr-1"></i> โหลดข้อมูลล่าสุด</button>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6" id="dashboardStats"></div>
+
+                    <div id="chartsSection" class="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-1"><i class="fa-solid fa-chart-column mr-2 text-blue-600"></i>สถานะเสนอความต้องการ</h3>
+                            <div class="w-full h-64 md:h-80 relative cursor-pointer"><canvas id="demandChart"></canvas></div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4"><i class="fa-solid fa-chart-pie mr-2 text-amber-500"></i>รายการคลัง สป.3</h3>
+                            <div class="w-full h-64 md:h-80 relative"><canvas id="inventoryChart"></canvas></div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4"><i class="fa-solid fa-chart-line mr-2 text-emerald-500"></i>สถานะการใช้งานยานพาหนะ</h3>
+                            <div class="w-full h-64 md:h-80 relative"><canvas id="vehicleUsageChart"></canvas></div>
+                        </div>
+                    </div>
+
+                    <!-- ตารางสรุปรายวันหนังสือรับ (Dashboard) -->
+                    <div id="incomingDocSummary" class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 hide-on-print">
+                            <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+                                <i class="fa-solid fa-inbox mr-2 text-indigo-500"></i>
+                                สรุปทะเบียนรับหนังสือ (รายวัน)
+                                <span id="incomingTodayCount" class="ml-2 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-sm font-bold">0</span>
+                            </h3>
+                            <div class="flex items-center gap-2">
+                                <input type="text" id="dashboardSearchInput" onkeyup="searchDashboardTable()" class="border rounded px-3 py-2 text-sm focus:ring-blue-500" placeholder="ค้นหาในตาราง...">
+                                <button onclick="prepareAndPrint('สรุปทะเบียนรับหนังสือ (รายวัน)')" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition shadow-sm flex items-center"><i class="fa-solid fa-print mr-2"></i> พิมพ์ / PDF</button>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto overflow-y-auto max-h-[500px] summary-table-wrapper custom-scrollbar">
+                            <table class="w-full text-base text-left border-collapse border border-gray-400 min-w-[850px] relative">
+                                <thead class="bg-indigo-900 text-white sticky top-0 z-20">
+                                    <tr>
+                                        <th class="px-3 py-3 border border-gray-400 text-center w-32">เลขทะเบียนรับ</th>
+                                        <th class="px-3 py-3 border border-gray-400 text-center w-28">วันที่</th>
+                                        <th class="px-3 py-3 border border-gray-400 text-center w-20">เวลา</th>
+                                        <th class="px-3 py-3 border border-gray-400 text-center w-32">ที่หนังสือ</th>
+                                        <th class="px-3 py-3 border border-gray-400 text-center">เรื่อง</th>
+                                        <th class="px-3 py-3 border border-gray-400 text-center w-40">จาก</th>
+                                        <th class="px-3 py-3 border border-gray-400 text-center w-32">ความเร่งด่วน</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="incomingSummaryBody" class="divide-y divide-gray-200"></tbody>
+                            </table>
+                        </div>
+                        <div class="hidden print-only-flex mt-12 w-full justify-end pr-12">
+                            <div class="text-center w-80">
+                                <p class="mb-16 text-md">ลงชื่อ.......................................................รับทราบ</p>
+                                <p class="text-md font-bold">( พ.ท. ธรเดชา  เดชสันติภักดี )</p>
+                                <p class="text-md mt-1">ตำแหน่ง หน.ผกบ.กอ.รพ.ค่ายสุรนารี</p>
+                                <p class="text-md mt-4">วันที่........./........./.........</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VIEW: Dynamic Table (ตารางฐานข้อมูลหลัก) -->
+                <div id="view-table" class="view-section hidden flex flex-col h-full">
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 flex-1 flex flex-col overflow-hidden">
+                        
+                        <div class="p-4 border-b border-gray-100 bg-gray-50 flex flex-col sm:flex-row items-center gap-4 table-filter-bar hide-on-print">
+                             <div class="flex items-center gap-2">
+                                <label class="text-xs font-bold text-gray-500 uppercase">กรองวันที่:</label>
+                                <input type="date" id="tableFilterStart" class="border rounded px-2 py-1.5 text-sm focus:ring-blue-500">
+                                <span class="text-gray-400 text-xs">ถึง</span>
+                                <input type="date" id="tableFilterEnd" class="border rounded px-2 py-1.5 text-sm focus:ring-blue-500">
+                                <button onclick="applyTableFilters()" class="bg-slate-700 text-white px-3 py-1.5 rounded hover:bg-slate-800 transition text-xs font-bold">กรองข้อมูล</button>
+                                <button onclick="resetTableFilters()" class="bg-white border border-gray-300 text-gray-600 px-3 py-1.5 rounded hover:bg-gray-100 transition text-xs font-bold">ล้าง</button>
+                             </div>
+                        </div>
+
+                        <div class="p-4 border-b border-gray-200 bg-blue-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hide-on-print">
+                            <div>
+                                <h3 class="font-semibold text-blue-800 text-lg" id="currentTableName">ชื่อตาราง</h3>
+                                <p class="text-sm text-gray-500 mt-1"><i class="fa-solid fa-circle-info mr-1"></i>รายการที่เพิ่มล่าสุดจะอยู่ด้านบนสุด</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="relative w-full sm:w-64">
+                                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-blue-400"></i>
+                                    <input type="text" id="tableSearchInput" onkeyup="searchTable()" class="shadow-sm border border-blue-200 rounded px-3 py-2 pl-10 w-full focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="ค้นหา...">
+                                </div>
+                                <button onclick="prepareAndPrint(document.getElementById('currentTableName').innerText)" class="text-rose-600 hover:text-white hover:bg-rose-600 bg-white border border-rose-300 px-3 py-2 rounded shadow-sm transition flex items-center"><i class="fa-solid fa-file-pdf mr-1"></i> PDF</button>
+                                <button onclick="refreshCurrentTable()" class="text-blue-600 hover:text-white hover:bg-blue-600 bg-white border border-blue-300 px-3 py-2 rounded shadow-sm transition flex items-center"><i class="fa-solid fa-rotate-right mr-1"></i> รีเฟรช</button>
+                            </div>
+                        </div>
+                        
+                        <div class="table-container p-0 bg-white relative custom-scrollbar flex-1">
+                            <table class="w-full text-base text-left border-collapse" id="dataTable">
+                                <thead id="tableHead" class="bg-blue-900 text-white"></thead>
+                                <tbody id="tableBody" class="divide-y divide-gray-200"></tbody>
+                            </table>
+                        </div>
+                        <div class="hidden print-only-flex mt-10 mb-10 w-full justify-end pr-20">
+                            <div class="text-center">
+                                <p class="mb-16 text-md">ลงชื่อ.......................................................รับทราบ</p>
+                                <p class="text-md font-bold">( พ.ท. ธรเดชา  เดชสันติภักดี )</p>
+                                <p class="text-md mt-2">ตำแหน่ง หน.ผกบ.กอ.รพ.ค่ายสุรนารี</p>
+                                <p class="text-md mt-2">วันที่........./........./.........</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL: Details -->
+    <div id="statusModal" class="fixed inset-0 bg-slate-900 bg-opacity-60 z-50 hidden flex justify-center items-center hide-on-print px-2 md:px-0">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col relative">
+            <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800" id="statusModalTitle">รายละเอียด</h3>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="text" id="modalSearchInput" onkeyup="searchModalTable()" class="border rounded px-3 py-1.5 text-sm focus:ring-blue-500" placeholder="ค้นหาในตาราง...">
+                    <button onclick="printStatusModal()" class="bg-rose-600 text-white px-3 py-1.5 rounded hover:bg-rose-700 transition text-sm flex items-center">
+                        <i class="fa-solid fa-print mr-1"></i> พิมพ์ / PDF
+                    </button>
+                    <button onclick="closeStatusModal()" class="text-gray-400 hover:text-gray-800 text-3xl transition ml-2">&times;</button>
+                </div>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1 custom-scrollbar">
+                <table class="w-full text-base text-left border-collapse border border-gray-300">
+                    <thead id="statusModalHead" class="bg-blue-900 text-white"></thead>
+                    <tbody id="statusModalBody" class="divide-y divide-gray-200"></tbody>
+                </table>
+                <div class="hidden print-only-flex mt-12 w-full justify-end pr-12">
+                    <div class="text-center w-80">
+                        <p class="mb-20 text-md">ลงชื่อ.......................................................รับทราบ</p>
+                        <p class="text-md font-bold">( พ.ท. ธรเดชา  เดชสันติภักดี )</p>
+                        <p class="text-md mt-1">ตำแหน่ง หน.ผกบ.กอ.รพ.ค่ายสุรนารี</p>
+                        <p class="text-md mt-4">วันที่........./........./.........</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
+
+        let currentUser = null;
+        let dashboardRawData = {};
+        let currentTableMatrix = []; 
+        let currentActiveSheet = 'dashboard';
+        let demandChartInstance = null, inventoryChartInstance = null, vehicleUsageChartInstance = null;
+
+        const cardConfig = {
+            'ทะเบียนรับหนังสือ': { icon: 'fa-inbox', color: 'bg-indigo-600' },
+            'เสนอความต้องการ': { icon: 'fa-file-signature', color: 'bg-blue-600' },
+            'ส่งซ่อม จำหน่าย': { icon: 'fa-screwdriver-wrench', color: 'bg-amber-500' },
+            'ขึ้นบัญชีคุม': { icon: 'fa-clipboard-list', color: 'bg-emerald-600' },
+            'ยานพาหนะ': { icon: 'fa-car-side', color: 'bg-slate-700' },
+            'เบิก สป.3': { icon: 'fa-truck-droplet', color: 'bg-cyan-600' },
+            'จำหน่าย สป.3': { icon: 'fa-receipt', color: 'bg-rose-600' },
+            'ทะเบียนหนังสือออก': { icon: 'fa-paper-plane', color: 'bg-purple-600' }
+        };
+
+        function showLoading(text) { document.getElementById('loadingText').innerText = text; document.getElementById('loadingOverlay').classList.replace('hidden', 'flex'); }
+        function hideLoading() { document.getElementById('loadingOverlay').classList.replace('flex', 'hidden'); }
+        function isRowEmpty(row) { return !row || !Array.isArray(row) || row.every(cell => cell === null || cell === undefined || cell.toString().trim() === ''); }
+
+        function formatCurrency(val) {
+            if (!val && val !== 0) return '';
+            let num = parseFloat(val.toString().replace(/,/g, ''));
+            if (isNaN(num)) return val;
+            return num.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function parseThaiDate(dateStr) {
+            if(!dateStr) return null;
+            const cleanStr = dateStr.toString().trim();
+            const parts = cleanStr.includes('/') ? cleanStr.split('/') : cleanStr.split('-');
+            if(parts.length !== 3) return null;
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            let year = parseInt(parts[2], 10);
+            if(year > 2400) year -= 543;
+            if(year < 100) year += 2000;
+            return new Date(year, month, day);
+        }
+
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('-translate-x-full'); document.getElementById('sidebarOverlay').classList.toggle('hidden'); }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const memberId = document.getElementById('memberId').value.trim();
+            showLoading('กำลังตรวจสอบความถูกต้อง...');
+            google.script.run.withSuccessHandler(res => {
+                hideLoading();
+                if(res.success) {
+                    currentUser = res.user;
+                    document.getElementById('userNameDisplay').innerText = currentUser.name;
+                    document.getElementById('userAvatar').innerText = currentUser.name.charAt(0);
+                    document.getElementById('loginScreen').classList.add('hidden');
+                    document.getElementById('mainApp').classList.remove('hidden');
+                    loadDashboardData();
+                } else Swal.fire('Error', res.message, 'error');
+            }).authenticateUser(memberId);
+        }
+
+        function logout() { Swal.fire({ title: 'ต้องการออกจากระบบใช่หรือไม่?', icon: 'question', showCancelButton: true }).then(r => { if(r.isConfirmed) location.reload(); }); }
+
+        function switchView(view) {
+            currentActiveSheet = view;
+            document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('bg-blue-600'));
+            const active = Array.from(document.querySelectorAll('.nav-link')).find(el => el.innerText.includes(view));
+            if(active) active.classList.add('bg-blue-600');
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            
+            if(view === 'dashboard') {
+                document.getElementById('pageTitle').innerText = 'แดชบอร์ดสรุปผล';
+                document.getElementById('view-dashboard').classList.remove('hidden');
+                loadDashboardData();
+            } else {
+                document.getElementById('pageTitle').innerText = view;
+                document.getElementById('currentTableName').innerText = `ฐานข้อมูล: ${view}`;
+                document.getElementById('view-table').classList.remove('hidden');
+                loadTableData(view);
+            }
+            if (window.innerWidth < 768) toggleSidebar();
+        }
+
+        function loadDashboardData() {
+            google.script.run.withSuccessHandler(data => { 
+                dashboardRawData = data; 
+                renderDashboard(data); 
+            }).getDashboardSummary();
+        }
+
+        function refreshDashboard() { loadDashboardData(); }
+        function refreshCurrentTable() { if(currentActiveSheet !== 'dashboard') loadTableData(currentActiveSheet); }
+
+        function applyDateFilter() {
+            const startVal = document.getElementById('startDate').value;
+            const endVal = document.getElementById('endDate').value;
+            if(!startVal && !endVal) return;
+            
+            const filterStart = startVal ? new Date(startVal) : new Date('1900-01-01');
+            const filterEnd = endVal ? new Date(endVal) : new Date('2100-01-01');
+            filterEnd.setHours(23,59,59);
+
+            let filteredData = {};
+            for (let sheet in dashboardRawData) {
+                const sheetData = dashboardRawData[sheet];
+                const header = sheetData[0];
+                const dateColIndex = header.findIndex(h => h && (h.toString().trim() === 'วันที่' || h.toString().toLowerCase().includes('date') || h.toString().trim() === 'ลงวันที่'));
+                
+                if (dateColIndex === -1) { filteredData[sheet] = sheetData; continue; }
+                
+                filteredData[sheet] = [header];
+                for (let i = 1; i < sheetData.length; i++) {
+                    if (isRowEmpty(sheetData[i])) continue;
+                    const rowDate = parseThaiDate(sheetData[i][dateColIndex]);
+                    if (rowDate && rowDate >= filterStart && rowDate <= filterEnd) { filteredData[sheet].push(sheetData[i]); }
+                }
+            }
+            renderDashboard(filteredData);
+        }
+
+        function resetFilter() {
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            renderDashboard(dashboardRawData);
+        }
+
+        function renderDashboard(data) {
+            const container = document.getElementById('dashboardStats');
+            container.innerHTML = '';
+            Object.keys(cardConfig).forEach(sheet => {
+                let count = data[sheet] ? data[sheet].filter((r,i) => i > 0 && !isRowEmpty(r)).length : 0;
+                const cfg = cardConfig[sheet];
+                container.innerHTML += `
+                    <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 flex items-center gap-4 transition hover:shadow-md cursor-pointer" onclick="switchView('${sheet}')">
+                        <div class="w-12 h-12 rounded-full ${cfg.color} text-white flex items-center justify-center text-xl"><i class="fa-solid ${cfg.icon}"></i></div>
+                        <div><p class="text-sm text-gray-500">${sheet}</p><h4 class="text-xl font-bold">${count.toLocaleString()} รายการ</h4></div>
+                    </div>`;
+            });
+            renderIncomingSummary(data['ทะเบียนรับหนังสือ']);
+            renderCharts(data);
+        }
+
+        function renderIncomingSummary(data) {
+            const tbody = document.getElementById('incomingSummaryBody');
+            const countBadge = document.getElementById('incomingTodayCount');
+            tbody.innerHTML = '';
+            if(!data || data.length <= 1) {
+                if(countBadge) countBadge.innerText = '0';
+                return;
+            }
+            
+            const h = data[0];
+            const desired = ['เลขทะเบียนรับ', 'วันที่', 'เวลา', 'ที่หนังสือ', 'เรื่อง', 'จาก', 'ความเร่งด่วน'];
+            const indices = desired.map(d => h.findIndex(head => head && (head.toString().trim() === d || (d === 'ที่หนังสือ' && head.toString().trim() === 'ที่'))));
+            
+            const dateColIdx = h.findIndex(head => head && head.toString().trim() === 'วันที่');
+
+            const now = new Date();
+            const todayYear = now.getFullYear();
+            const todayMonth = now.getMonth();
+            const todayDate = now.getDate();
+
+            let rows = data.slice(1).filter(r => !isRowEmpty(r));
+            
+            // กรองข้อมูลเฉพาะของวันนี้ (หากไม่มีการใช้ตัวกรองช่วงวันที่ด้านบน)
+            const globalStart = document.getElementById('startDate').value;
+            if (!globalStart) {
+                if (dateColIdx !== -1) {
+                    rows = rows.filter(r => {
+                        const rowDateStr = (r[dateColIdx] || '').toString().trim();
+                        if (!rowDateStr) return false;
+                        const rowDate = parseThaiDate(rowDateStr);
+                        if (!rowDate) return false;
+                        return rowDate.getFullYear() === todayYear && rowDate.getMonth() === todayMonth && rowDate.getDate() === todayDate;
+                    });
+                }
+            }
+
+            if(countBadge) countBadge.innerText = rows.length.toLocaleString();
+
+            if(rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-6 text-center text-gray-500 italic">ไม่พบรายการหนังสือรับ</td></tr>`;
+                return;
+            }
+
+            rows.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "divide-x divide-gray-200 border-b hover:bg-gray-50 transition";
+                indices.forEach(idx => {
+                    const td = document.createElement('td');
+                    td.className = "px-3 py-2 border border-gray-400 text-sm";
+                    td.innerText = row[idx] || '';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderCharts(data) {
+            let demandStatusCounts = {};
+            if(data['เสนอความต้องการ'] && data['เสนอความต้องการ'].length > 1) {
+                const sheetData = data['เสนอความต้องการ'];
+                const statusIdx = sheetData[0].findIndex(h => h && h.toString().trim() === 'สถานะ');
+                if(statusIdx !== -1) {
+                    sheetData.slice(1).forEach(r => {
+                        if (isRowEmpty(r)) return;
+                        let status = (r[statusIdx] || 'ไม่ระบุ').toString().trim();
+                        demandStatusCounts[status] = (demandStatusCounts[status] || 0) + 1;
+                    });
+                }
+            }
+            renderDemandChart(Object.keys(demandStatusCounts), Object.values(demandStatusCounts));
+
+            let inventoryLabels = []; let inventoryData = [];
+            if(data['คลัง สป.3'] && data['คลัง สป.3'].length > 1) {
+                const sheetData = data['คลัง สป.3'];
+                const itemIdx = sheetData[0].findIndex(h => h && h.toString().trim() === 'รายการ');
+                const qtyIdx = sheetData[0].findIndex(h => h && h.toString().trim() === 'จำนวนคงคลัง');
+                sheetData.slice(1).forEach(r => {
+                    if (isRowEmpty(r)) return;
+                    inventoryLabels.push(r[itemIdx] || 'ไม่ระบุ');
+                    inventoryData.push(parseFloat(r[qtyIdx]?.toString().replace(/,/g,'')) || 0);
+                });
+            }
+            renderInventoryChart(inventoryLabels, inventoryData);
+
+            let vLabels = []; let vData = [];
+            if(data['ยานพาหนะ'] && data['ยานพาหนะ'].length > 1) {
+                const sheetData = data['ยานพาหนะ'];
+                const headers = sheetData[0];
+                const plateIdx = headers.findIndex(h => h && h.toString().trim() === 'ทะเบียนจักร');
+                const civPlateIdx = headers.findIndex(h => h && h.toString().trim() === 'ทะเบียนพลเรือน');
+                const usageIdx = headers.findIndex(h => h && h.toString().trim() === 'การใช้งาน');
+                
+                sheetData.slice(1).forEach(r => {
+                    if (isRowEmpty(r)) return;
+                    const milPlate = r[plateIdx] || '-';
+                    const civPlate = r[civPlateIdx] || '-';
+                    vLabels.push(`${milPlate} (${civPlate})`);
+                    vData.push(parseFloat(r[usageIdx]?.toString().replace(/,/g,'')) || 0);
+                });
+            }
+            renderVehicleUsageChart(vLabels.length ? vLabels : ['ไม่มีข้อมูล'], vData.length ? vData : [0]);
+        }
+
+        function renderDemandChart(labels, dataCounts) {
+            const ctx = document.getElementById('demandChart').getContext('2d');
+            if (demandChartInstance) demandChartInstance.destroy();
+            const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+            demandChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: labels, datasets: [{ data: dataCounts, backgroundColor: labels.map((_, i) => colors[i % colors.length]), borderRadius: 6 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, datalabels: { display: true, anchor: 'end', align: 'top', font: { weight: 'bold', family: 'Sarabun' } } },
+                    scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } }, x: { grid: { display: false } } },
+                    onClick: (e, elements) => { if (elements.length > 0) openStatusModal(labels[elements[0].index]); }
+                }
+            });
+        }
+
+        function renderInventoryChart(labels, dataCounts) {
+            const ctx = document.getElementById('inventoryChart').getContext('2d');
+            if (inventoryChartInstance) inventoryChartInstance.destroy();
+            inventoryChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: { labels: labels, datasets: [{ data: dataCounts, backgroundColor: ['#06b6d4', '#f43f5e', '#a855f7', '#14b8a6', '#f97316', '#3b82f6'], borderWidth: 4, borderColor: '#ffffff' }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '65%',
+                    plugins: { 
+                        legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 6, font: { family: 'Sarabun', size: 10 } } },
+                        datalabels: { 
+                            display: true, color: '#fff', font: { weight: 'bold', family: 'Sarabun', size: 12 },
+                            backgroundColor: 'rgba(0, 0, 0, 0.4)', borderRadius: 4, padding: 4,
+                            formatter: (value) => value.toLocaleString()
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderVehicleUsageChart(labels, dataCounts) {
+            const ctx = document.getElementById('vehicleUsageChart').getContext('2d');
+            if (vehicleUsageChartInstance) vehicleUsageChartInstance.destroy();
+            vehicleUsageChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { labels: labels, datasets: [{ data: dataCounts, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.05)', fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#10b981', borderWidth: 3 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, datalabels: { align: 'top', color: '#047857', font: { weight: 'bold', family: 'Sarabun', size: 10 } } },
+                    scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' } }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        function openStatusModal(statusName) {
+            const targetStatus = statusName.toString().trim();
+            document.getElementById('statusModalTitle').innerText = `รายละเอียดสถานะ: ${targetStatus}`;
+            const rawData = dashboardRawData['เสนอความต้องการ'];
+            if(!rawData || rawData.length < 2) return;
+            const headers = rawData[0];
+            const statusIdx = headers.findIndex(h => h && h.toString().trim() === 'สถานะ');
+            const desired = ['วันที่', 'เรื่อง', 'จาก', 'จำนวน', 'ราคา', 'ความเร่งด่วน', 'สถานะ'];
+            let indices = desired.map(c => headers.findIndex(h => h && h.toString().trim() === c)).filter(i => i !== -1);
+            let filtered = rawData.slice(1).filter(r => !isRowEmpty(r) && (r[statusIdx] || '').toString().trim() === targetStatus);
+            
+            const dateColIdx = headers.findIndex(h => h && h.toString().trim() === 'วันที่');
+            if(dateColIdx !== -1) {
+                filtered.sort((a, b) => (parseThaiDate(b[dateColIdx]) || 0) - (parseThaiDate(a[dateColIdx]) || 0));
+            }
+
+            document.getElementById('statusModalHead').innerHTML = `<tr class="bg-blue-900 text-white">${indices.map(i => `<th class="px-3 py-3 text-center border border-gray-400 font-semibold">${headers[i]}</th>`).join('')}</tr>`;
+            
+            document.getElementById('statusModalBody').innerHTML = filtered.length ? filtered.map((r, i) => {
+                return `<tr class="hover:bg-gray-50 transition-all">${indices.map(idx => {
+                    let cellValue = r[idx] || '';
+                    if (headers[idx]?.toString().includes('ราคา')) cellValue = formatCurrency(cellValue);
+                    return `<td class="px-3 py-2 text-sm border border-gray-200">${cellValue}</td>`;
+                }).join('')}</tr>`;
+            }).join('') : `<tr><td colspan="${indices.length}" class="p-10 text-center italic text-gray-400">ไม่พบข้อมูล</td></tr>`;
+            
+            document.getElementById('statusModal').classList.remove('hidden');
+            document.getElementById('statusModal').classList.add('flex');
+        }
+
+        function closeStatusModal() { document.getElementById('statusModal').classList.replace('flex', 'hidden'); }
+
+        function printStatusModal() {
+            const now = new Date();
+            const printTime = now.toLocaleString('th-TH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            document.getElementById('actualPrintTime').innerText = printTime;
+            document.getElementById('printTitle').innerText = 'รายงาน' + document.getElementById('statusModalTitle').innerText;
+            document.body.classList.add('print-modal-active');
+            window.print();
+            setTimeout(() => { document.body.classList.remove('print-modal-active'); }, 500);
+        }
+
+        function loadTableData(sheet) {
+            showLoading(`กำลังเรียกข้อมูล ${sheet}...`);
+            google.script.run.withSuccessHandler(res => { 
+                hideLoading(); 
+                currentTableMatrix = res.data; 
+                renderTable(sheet, res.data); 
+            }).getSheetData(sheet);
+        }
+
+        function applyTableFilters() {
+            const startVal = document.getElementById('tableFilterStart').value;
+            const endVal = document.getElementById('tableFilterEnd').value;
+            if(!startVal && !endVal) return;
+            
+            const filterStart = startVal ? new Date(startVal) : new Date('1900-01-01');
+            const filterEnd = endVal ? new Date(endVal) : new Date('2100-01-01');
+            filterEnd.setHours(23,59,59);
+
+            const headers = currentTableMatrix[0];
+            const dateColIdx = headers.findIndex(h => h && (h.toString().trim() === 'วันที่' || h.toString().trim() === 'ลงวันที่' || h.toString().trim() === 'ส่งวันที่'));
+            
+            if (dateColIdx === -1) {
+                Swal.fire('แจ้งเตือน', 'ตารางนี้ไม่มีคอลัมน์วันที่สำหรับกรองข้อมูล', 'info');
+                return;
+            }
+
+            const filteredMatrix = [headers];
+            for (let i = 1; i < currentTableMatrix.length; i++) {
+                if (isRowEmpty(currentTableMatrix[i])) continue;
+                const rowDate = parseThaiDate(currentTableMatrix[i][dateColIdx]);
+                if (rowDate && rowDate >= filterStart && rowDate <= filterEnd) {
+                    filteredMatrix.push(currentTableMatrix[i]);
+                }
+            }
+            renderTable(currentActiveSheet, filteredMatrix, true); 
+        }
+
+        function resetTableFilters() {
+            document.getElementById('tableFilterStart').value = '';
+            document.getElementById('tableFilterEnd').value = '';
+            renderTable(currentActiveSheet, currentTableMatrix);
+        }
+
+        function renderTable(sheet, matrix, isFiltered = false) {
+            const thead = document.getElementById('tableHead');
+            const tbody = document.getElementById('tableBody');
+            if(!matrix || matrix.length === 0) return;
+            
+            const headers = matrix[0];
+            let displayIdx = [];
+            
+            if (sheet === 'ทะเบียนรับหนังสือ') {
+                ['เลขทะเบียนรับ', 'วันที่', 'เวลา', 'ที่หนังสือ', 'เรื่อง', 'จาก', 'ความเร่งด่วน'].forEach(d => {
+                    let idx = headers.findIndex(h => h && (h.toString().trim() === d || (d === 'ที่หนังสือ' && h.toString().trim() === 'ที่') || (d === 'วันที่' && h.toString().trim() === 'ลงวันที่')));
+                    if (idx !== -1) displayIdx.push(idx);
+                });
+            } else if (sheet === 'ทะเบียนหนังสือออก') {
+                ['วันที่', 'ที่หนังสือ', 'เรื่อง', 'ประเภท', 'ไปยัง', 'ส่งวันที่', 'ชื่อ-สกุล'].forEach(d => {
+                    let idx = headers.findIndex(h => h && (h.toString().trim() === d || (d === 'ที่หนังสือ' && h.toString().trim() === 'ที่')));
+                    if (idx !== -1) displayIdx.push(idx);
+                });
+            } else if (sheet === 'จำหน่าย สป.3') {
+                displayIdx = headers.map((_, i) => i).filter(i => (headers[i]||'').toString().trim() !== 'ประเภท สป.3');
+            } else {
+                displayIdx = headers.map((_, i) => i);
+            }
+
+            thead.innerHTML = `<tr class="bg-blue-900 text-white">` + 
+                             displayIdx.map(i => `<th class="px-4 py-3 border border-blue-800 text-center font-semibold whitespace-nowrap">${headers[i]}</th>`).join('') + 
+                             `<th class="px-4 py-3 border border-blue-800 text-center action-cell hide-on-print">จัดการ</th></tr>`;
+            
+            let rows = matrix.slice(1).filter(r => !isRowEmpty(r));
+            
+            const dateSortIdx = headers.findIndex(h => h && (h.toString().trim() === 'วันที่' || h.toString().trim() === 'ลงวันที่'));
+            if(dateSortIdx !== -1) {
+                rows.sort((a, b) => (parseThaiDate(b[dateSortIdx]) || 0) - (parseThaiDate(a[dateSortIdx]) || 0));
+            }
+
+            tbody.innerHTML = rows.map((row, i) => {
+                const originalRowIndex = currentTableMatrix.findIndex(r => r === row);
+                const cells = displayIdx.map(idx => {
+                    let val = row[idx] || '';
+                    const hText = headers[idx]?.toString().trim() || '';
+                    if (hText.includes('ราคา')) val = formatCurrency(val);
+                    return `<td class="px-4 py-3 border border-gray-200" data-col-index="${idx}">${val}</td>`;
+                }).join('');
+                return `<tr class="border-b hover:bg-gray-50 transition" data-row-index="${originalRowIndex}">
+                            ${cells}
+                            <td class="px-4 py-3 border border-gray-200 text-center action-cell hide-on-print">
+                                <button onclick="toggleEdit(this, '${sheet}')" class="text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-600 hover:text-white transition-all text-xs font-bold shadow-sm">
+                                    <i class="fa-solid fa-edit"></i> แก้ไข
+                                </button>
+                            </td>
+                        </tr>`;
+            }).join('');
+            
+            if(rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="${displayIdx.length + 1}" class="p-10 text-center italic text-gray-400">ไม่พบข้อมูลตามเงื่อนไขที่ระบุ</td></tr>`;
+            }
+        }
+
+        function toggleEdit(btn, sheet) {
+            const tr = btn.closest('tr');
+            const isEditing = tr.classList.contains('editable-row');
+            const cells = tr.querySelectorAll('td:not(.action-cell)');
+            const headerCells = Array.from(document.querySelectorAll('#tableHead th')).map(th => th.innerText.trim());
+
+            if (!isEditing) {
+                tr.classList.add('editable-row');
+                cells.forEach(td => {
+                    td.contentEditable = "true";
+                    const colIdxInRow = Array.from(tr.cells).indexOf(td);
+                    const hText = headerCells[colIdxInRow] || '';
+                    if (hText.includes('ราคา')) td.innerText = td.innerText.replace(/,/g, '');
+                });
+                btn.innerHTML = `<i class="fa-solid fa-save"></i> บันทึก`;
+                btn.classList.replace('text-blue-600', 'text-white');
+                btn.classList.replace('bg-blue-50', 'bg-emerald-600');
+            } else {
+                saveRow(tr, sheet, btn, headerCells);
+            }
+        }
+
+        function saveRow(tr, sheet, btn, headerCells) {
+            const rowIdx = parseInt(tr.getAttribute('data-row-index'));
+            const cells = tr.querySelectorAll('td:not(.action-cell)');
+            let promises = [];
+            showLoading('กำลังบันทึกข้อมูล...');
+            
+            cells.forEach(td => {
+                const colIdxInSheet = parseInt(td.getAttribute('data-col-index'));
+                const val = td.innerText.trim();
+                promises.push(new Promise((resolve) => {
+                    google.script.run.withSuccessHandler(() => resolve()).updateCell(sheet, rowIdx, colIdxInSheet, val.replace(/,/g, ''));
+                }));
+            });
+
+            Promise.all(promises).then(() => {
+                hideLoading();
+                tr.classList.remove('editable-row');
+                cells.forEach(td => {
+                    td.contentEditable = "false";
+                    const colIdxInRow = Array.from(tr.cells).indexOf(td);
+                    const hText = headerCells[colIdxInRow] || '';
+                    if (hText.includes('ราคา')) td.innerText = formatCurrency(td.innerText);
+                });
+                btn.innerHTML = `<i class="fa-solid fa-edit"></i> แก้ไข`;
+                btn.classList.replace('bg-emerald-600', 'bg-blue-50');
+                btn.classList.replace('text-white', 'text-blue-600');
+                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'จัดเก็บเรียบร้อย', showConfirmButton: false, timer: 1500 });
+                loadDashboardDataSilent();
+            });
+        }
+
+        function loadDashboardDataSilent() { google.script.run.withSuccessHandler(d => dashboardRawData = d).getDashboardSummary(); }
+
+        function searchTable() {
+            const filter = document.getElementById("tableSearchInput").value.toLowerCase();
+            const trs = document.getElementById("tableBody").getElementsByTagName("tr");
+            for (let tr of trs) {
+                let found = Array.from(tr.cells).some(td => td.innerText.toLowerCase().includes(filter));
+                tr.style.display = found ? "" : "none";
+            }
+        }
+
+        function searchDashboardTable() {
+            const filter = document.getElementById("dashboardSearchInput").value.toLowerCase();
+            const trs = document.getElementById("incomingSummaryBody").getElementsByTagName("tr");
+            for (let tr of trs) {
+                let found = Array.from(tr.cells).some(td => td.innerText.toLowerCase().includes(filter));
+                tr.style.display = found ? "" : "none";
+            }
+        }
+
+        function searchModalTable() {
+            const filter = document.getElementById("modalSearchInput").value.toLowerCase();
+            const trs = document.getElementById("statusModalBody").getElementsByTagName("tr");
+            for (let tr of trs) {
+                let found = Array.from(tr.cells).some(td => td.innerText.toLowerCase().includes(filter));
+                tr.style.display = found ? "" : "none";
+            }
+        }
+
+        function prepareAndPrint(title) {
+            const now = new Date();
+            const printTime = now.toLocaleString('th-TH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            document.getElementById('actualPrintTime').innerText = printTime;
+            document.getElementById('printTitle').innerText = 'รายงาน' + title;
+            
+            document.body.classList.remove('print-incoming-summary', 'print-main-table');
+
+            // แยกประเภทการพิมพ์เพื่อให้ CSS ซ่อนตารางที่ไม่เกี่ยวข้องได้อย่างถูกต้อง
+            if (title.includes('สรุปทะเบียนรับหนังสือ')) {
+                document.body.classList.add('print-incoming-summary');
+            } else {
+                document.body.classList.add('print-main-table');
+            }
+            
+            window.print();
+        }
+    </script>
+</body>
+</html>
